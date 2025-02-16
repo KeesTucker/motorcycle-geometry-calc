@@ -131,11 +131,9 @@
     <label for="linkage-ratio">Rear Linkage Ratio:</label>
     <input type="number" id="linkage-ratio" step="0.01" value="3.0">
 
-    <!-- NEW: We treat rearTravel as vertical wheel travel already multiplied by ratio -->
     <label for="rear-travel">Rear Travel (mm) [vertical wheel movement]:</label>
     <input type="number" id="rear-travel" step="1" value="100">
 
-    <!-- FRONT TRAVEL (still along the fork axis, or effectively if you treat it that way) -->
     <label for="front-travel">Front Fork Travel (mm):</label>
     <input type="number" id="front-travel" step="1" value="300">
 
@@ -160,6 +158,9 @@
     <input type="text" id="setup-name" placeholder="e.g. 'High offset wheels'">
     <button onclick="saveResults()">Save Results</button>
 
+    <!-- NEW: Export CSV button -->
+    <button onclick="exportCSV()">Export to CSV</button>
+
     <!-- RESULTS -->
     <div class="results" id="results">
         Results will appear here.
@@ -173,10 +174,6 @@
 </div>
 
 <script>
-// We'll store the current results in these globals so "saveResults" can access them
-window.currentAngle = 0;
-window.currentTrail = 0;
-
 // We'll keep an array in memory to represent the saved setups. We'll also load/save from localStorage.
 let savedSetups = [];
 
@@ -199,8 +196,23 @@ function renderSavedSetups() {
     list.innerHTML = '';
 
     savedSetups.forEach((item, index) => {
+        // We'll display just the baseline scenario's rake/trail (computed on the fly if not stored)
+        let baselineRake = 0;
+        let baselineTrail = 0;
+
+        if (item.scenarios && item.scenarios.baseline) {
+            // Use the stored baseline scenario
+            baselineRake = item.scenarios.baseline.rake;
+            baselineTrail = item.scenarios.baseline.trail;
+        } else {
+            // Older save: compute from item.data on the fly
+            const tempScenarios = calculateScenariosFromData(item.data);
+            baselineRake = tempScenarios.baseline.rake;
+            baselineTrail = tempScenarios.baseline.trail;
+        }
+
         const li = document.createElement('li');
-        li.textContent = `${item.name} - Rake: ${item.angle.toFixed(1)}°, Trail: ${item.trail.toFixed(1)} mm`;
+        li.textContent = `${item.name} - Rake: ${baselineRake.toFixed(1)}°, Trail: ${baselineTrail.toFixed(1)} mm`;
 
         // Load button
         const loadBtn = document.createElement('button');
@@ -271,8 +283,10 @@ function loadSetup(index) {
     calculateGeometry();
 }
 
-/**
- * Saves current inputs + result (rake/trail) to localStorage.
+/** 
+ * Saves current inputs + (optionally) the 5 scenario results to localStorage.
+ * For *new* setups, we store the scenario data so we won't need to recompute later.
+ * Older ones remain unaffected.
  */
 function saveResults() {
     const setupName = document.getElementById('setup-name').value.trim();
@@ -281,10 +295,7 @@ function saveResults() {
         return;
     }
 
-    const angle = window.currentAngle;
-    const trl   = window.currentTrail;
-
-    // Gather all input data
+    // Gather all input data from the form
     const data = {
         initialFrontWheel: document.getElementById('initial-front-wheel').value,
         initialFrontTireWidth: document.getElementById('initial-front-tire-width').value,
@@ -321,11 +332,13 @@ function saveResults() {
         updatedForkAxleOffset: document.getElementById('updated-fork-axle-offset').value
     };
 
+    // Compute the 5 scenario results for this new setup
+    const scenarios = calculateScenariosFromData(data);
+
     const newItem = {
         name: setupName,
         data: data,
-        angle: angle,
-        trail: trl
+        scenarios: scenarios  // storing all 5 scenarios for future use
     };
 
     savedSetups.push(newItem);
@@ -334,7 +347,65 @@ function saveResults() {
     document.getElementById('setup-name').value = '';
 }
 
-/** Converts rim diameter (inches->mm) plus sidewalls into total diameter (mm). */
+/** 
+ * EXPORTED CSV columns, each row = one saved setup:
+ *   Name, 
+ *   Baseline Rake, Baseline Trail,
+ *   Sag Rake, Sag Trail,
+ *   Full Comp Rake, Full Comp Trail,
+ *   Fork Full Comp Rake, Fork Full Comp Trail,
+ *   Shock Full Comp Rake, Shock Full Comp Trail
+ */
+function exportCSV() {
+    if (!savedSetups.length) {
+        alert("No saved setups to export.");
+        return;
+    }
+
+    // CSV header
+    let csv = "Setup Name,Baseline Rake (deg),Baseline Trail (mm),Sag Rake (deg),Sag Trail (mm),Full Comp Rake (deg),Full Comp Trail (mm),Fork Full Comp Rake (deg),Fork Full Comp Trail (mm),Shock Full Comp Rake (deg),Shock Full Comp Trail (mm)\n";
+
+    // Build each row
+    savedSetups.forEach(item => {
+        // If the item didn't previously store the scenario data, compute on the fly:
+        let sc = item.scenarios;
+        if (!sc) {
+            sc = calculateScenariosFromData(item.data);
+        }
+
+        csv += [
+            `"${item.name}"`,
+            sc.baseline.rake.toFixed(2),          // Baseline rake
+            sc.baseline.trail.toFixed(1),         // Baseline trail
+            sc.sag.rake.toFixed(2),               // Sag rake
+            sc.sag.trail.toFixed(1),              // Sag trail
+            sc.fullComp.rake.toFixed(2),          // Full comp rake
+            sc.fullComp.trail.toFixed(1),         // Full comp trail
+            sc.forkCompRearExt.rake.toFixed(2),   // Fork comp, rear ext rake
+            sc.forkCompRearExt.trail.toFixed(1),  // Fork comp, rear ext trail
+            sc.shockCompForkExt.rake.toFixed(2),  // Shock comp, fork ext rake
+            sc.shockCompForkExt.trail.toFixed(1), // Shock comp, fork ext trail
+        ].join(",") + "\n";
+    });
+
+    // Trigger a download
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "MotorcycleGeometry.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+//------------------------------------------------------------------
+// Below are existing geometry calculations, plus a helper function
+// to compute all 5 scenarios from a "data" object.
+
+/**
+ * Helper to convert rim diameter (inches->mm) plus sidewalls into total diameter (mm).
+ */
 function calculateTireDiameter(rimDiameterMm, tireWidth, aspectRatio) {
     // sidewall = tireWidth * (aspectRatio / 100)
     // total = rimDiameterMm + 2 * sidewall
@@ -342,25 +413,7 @@ function calculateTireDiameter(rimDiameterMm, tireWidth, aspectRatio) {
 }
 
 /**
- * Performs the iterative geometry calculation to find final rake & trail,
- * given a particular *effective* front and rear "shock length" (in mm).
- * 
- * Because we said:
- *    - rearTravel is wheel vertical movement,
- *    - initial/updated rear shock lengths are actual eye-to-eye,
- * we still do: (shockLen * linkageRatio) to get actual vertical height at the rear.
- * 
- * @param {number} frontShockLen  The front fork length currently in use (minus any "fork slide").
- * @param {number} rearShockLen   The actual shock length in use (mm). 
- * @param {number} newFrontRadius half the new front tire diameter (mm).
- * @param {number} newRearRadius  half the new rear tire diameter (mm).
- * @param {number} totalUpdatedOffset The sum of triple-tree offset + axle offset (mm, perpendicular).
- * @param {number} initHeadAngleDeg The original rake angle from vertical (degrees).
- * @param {number} wheelbase      The wheelbase (mm).
- * @param {number} initHeightDiff The stock geometry's front vs rear difference (mm).
- * @param {number} linkageRatio   The shock’s ratio to rear wheel vertical motion.
- * 
- * @returns {{angleDeg: number, trail: number}}
+ * Iterative geometry function to find final rake & trail.
  */
 function iterativeRakeTrail(
     frontShockLen, 
@@ -381,19 +434,17 @@ function iterativeRakeTrail(
     for (let i = 0; i < maxIter; i++) {
         const angleRad = angleDeg * (Math.PI / 180);
 
-        // front & rear relative heights with the current angle:
-        //   We subtract (offset * cos(angle)) because "offset" is along the fork axis
-        //   and we only want the vertical portion.
-        const frontRelativeHeight = newFrontRadius 
-                                    + (frontShockLen * Math.cos(angleRad)) 
-                                    - (totalUpdatedOffset * Math.cos(angleRad));
+        const frontRelativeHeight = 
+            newFrontRadius 
+            + (frontShockLen * Math.cos(angleRad)) 
+            - (totalUpdatedOffset * Math.cos(angleRad));
 
-        // rear shock length is the actual shock length. Multiply by ratio for vertical.
-        const rearRelativeHeight  = newRearRadius + (rearShockLen * linkageRatio);
+        const rearRelativeHeight  = 
+            newRearRadius 
+            + (rearShockLen * linkageRatio);
 
         const newHeightDiff = frontRelativeHeight - rearRelativeHeight;
 
-        // new angle is the original plus the difference in pitch vs. stock
         const nextAngleDeg = initHeadAngleDeg +
             (
                 Math.atan2(newHeightDiff, wheelbase) * (180 / Math.PI)
@@ -420,211 +471,230 @@ function iterativeRakeTrail(
 }
 
 /**
- * Main geometry calculation + extra suspension states.
- * Updates global window.currentAngle and window.currentTrail for the normal scenario,
- * plus calculates 4 additional scenarios:
- *   1) 33% rider sag
- *   2) full compression
- *   3) fork compressed, rear extended
- *   4) rear compressed, fork extended
+ * Given the entire input data object (same structure as in "saveResults"),
+ * compute all 5 scenarios:
  */
-function calculateGeometry() {
-    // 1. Grab basic inputs
-    const initialFrontWheel     = parseFloat(document.getElementById('initial-front-wheel').value) * 25.4;
-    const initialFrontTireWidth = parseFloat(document.getElementById('initial-front-tire-width').value);
-    const initialFrontAspect    = parseFloat(document.getElementById('initial-front-aspect-ratio').value);
+function calculateScenariosFromData(d) {
+    // Convert needed strings to numbers
+    const iFW  = parseFloat(d.initialFrontWheel) * 25.4;
+    const iFTW = parseFloat(d.initialFrontTireWidth);
+    const iFAR = parseFloat(d.initialFrontAspect);
+    const iRW  = parseFloat(d.initialRearWheel) * 25.4;
+    const iRTW = parseFloat(d.initialRearTireWidth);
+    const iRAR = parseFloat(d.initialRearAspect);
 
-    const initialRearWheel     = parseFloat(document.getElementById('initial-rear-wheel').value) * 25.4;
-    const initialRearTireWidth = parseFloat(document.getElementById('initial-rear-tire-width').value);
-    const initialRearAspect    = parseFloat(document.getElementById('initial-rear-aspect-ratio').value);
+    const nFW  = parseFloat(d.newFrontWheel) * 25.4;
+    const nFTW = parseFloat(d.newFrontTireWidth);
+    const nFAR = parseFloat(d.newFrontAspect);
+    const nRW  = parseFloat(d.newRearWheel) * 25.4;
+    const nRTW = parseFloat(d.newRearTireWidth);
+    const nRAR = parseFloat(d.newRearAspect);
 
-    const newFrontWheel     = parseFloat(document.getElementById('new-front-wheel').value) * 25.4;
-    const newFrontTireWidth = parseFloat(document.getElementById('new-front-tire-width').value);
-    const newFrontAspect    = parseFloat(document.getElementById('new-front-aspect-ratio').value);
+    const headAngle = parseFloat(d.headAngle); // deg from vertical
+    const wheelbase = parseFloat(d.wheelbase);
 
-    const newRearWheel     = parseFloat(document.getElementById('new-rear-wheel').value) * 25.4;
-    const newRearTireWidth = parseFloat(document.getElementById('new-rear-tire-width').value);
-    const newRearAspect    = parseFloat(document.getElementById('new-rear-aspect-ratio').value);
+    const iFShock = parseFloat(d.initialFrontShock);
+    const uFShock = parseFloat(d.updatedFrontShock);
+    const forkSlide = parseFloat(d.forkSlide) || 0;
 
-    const initialHeadAngle = parseFloat(document.getElementById('head-angle').value); // deg from vertical
-    const wheelbase        = parseFloat(document.getElementById('wheelbase').value);
+    const iRShock = parseFloat(d.initialRearShock);
+    const uRShock = parseFloat(d.updatedRearShock);
+    const linkage = parseFloat(d.linkageRatio);
 
-    const initialFrontShock = parseFloat(document.getElementById('initial-front-shock').value);
-    const updatedFrontShock = parseFloat(document.getElementById('updated-front-shock').value);
+    const rTravel = parseFloat(d.rearTravel);
+    const fTravel = parseFloat(d.frontTravel);
 
-    // How much the forks are slid up or down in the clamps
-    const forkSlide = parseFloat(document.getElementById('fork-slide').value) || 0;
+    const iFOffset = parseFloat(d.initialForkOffset);
+    const iFAxOff  = parseFloat(d.initialForkAxleOffset);
+    const uFOffset = parseFloat(d.updatedForkOffset);
+    const uFAxOff  = parseFloat(d.updatedForkAxleOffset);
 
-    const initialRearShock  = parseFloat(document.getElementById('initial-rear-shock').value);
-    const updatedRearShock  = parseFloat(document.getElementById('updated-rear-shock').value);
+    const totalInitialOffset = iFOffset + iFAxOff;
+    const totalUpdatedOffset = uFOffset + uFAxOff;
 
-    const linkageRatio = parseFloat(document.getElementById('linkage-ratio').value);
+    // Tire diameters
+    const initFrontDiam = calculateTireDiameter(iFW, iFTW, iFAR);
+    const initRearDiam  = calculateTireDiameter(iRW, iRTW, iRAR);
+    const newFrontDiam  = calculateTireDiameter(nFW, nFTW, nFAR);
+    const newRearDiam   = calculateTireDiameter(nRW, nRTW, nRAR);
 
-    // "rearTravel" is the total vertical wheel travel from full extension to full compression.
-    const rearTravel  = parseFloat(document.getElementById('rear-travel').value);
+    // Stock geometry's front & rear relative heights
+    const angleRad = headAngle * (Math.PI / 180);
+    const initFrontRelHeight =
+        (initFrontDiam / 2)
+        + (iFShock * Math.cos(angleRad))
+        - (totalInitialOffset * Math.cos(angleRad));
+    const initRearRelHeight =
+        (initRearDiam / 2)
+        + (iRShock * linkage);
+    const initHeightDiff = initFrontRelHeight - initRearRelHeight;
 
-    // "frontTravel" is the total fork travel (usually along the fork axis).
-    const frontTravel = parseFloat(document.getElementById('front-travel').value);
-
-    const initForkOffset   = parseFloat(document.getElementById('initial-fork-offset').value);
-    const initForkAxleOff  = parseFloat(document.getElementById('initial-fork-axle-offset').value);
-    const updForkOffset    = parseFloat(document.getElementById('updated-fork-offset').value);
-    const updForkAxleOff   = parseFloat(document.getElementById('updated-fork-axle-offset').value);
-
-    const totalInitialOffset = initForkOffset + initForkAxleOff;
-    const totalUpdatedOffset = updForkOffset + updForkAxleOff;
-
-    // 2. Tire diameters (mm)
-    const initFrontTireDiameter = calculateTireDiameter(initialFrontWheel, initialFrontTireWidth, initialFrontAspect);
-    const initRearTireDiameter  = calculateTireDiameter(initialRearWheel, initialRearTireWidth, initialRearAspect);
-    const newFrontTireDiameter  = calculateTireDiameter(newFrontWheel, newFrontTireWidth, newFrontAspect);
-    const newRearTireDiameter   = calculateTireDiameter(newRearWheel, newRearTireWidth, newRearAspect);
-
-    // 3. Stock geometry's front & rear relative heights
-    const headAngleRad = initialHeadAngle * (Math.PI / 180);
-    const initFrontRelativeHeight =
-        (initFrontTireDiameter / 2)
-        + (initialFrontShock * Math.cos(headAngleRad))
-        - (totalInitialOffset * Math.cos(headAngleRad));
-
-    const initRearRelativeHeight =
-        (initRearTireDiameter / 2)
-        + (initialRearShock * linkageRatio);
-
-    // The stock difference
-    const initHeightDiff = initFrontRelativeHeight - initRearRelativeHeight;
-
-    // ------------------------------------------------------------------
-    // SCENARIO A: No extra compression (fully extended)
-    // Net front fork length after clamp slide:
-    const frontLenA = Math.max(0, updatedFrontShock - forkSlide);
-    // Rear is just the updated shock length (no compression)
-    const rearLenA  = updatedRearShock;
-
-    const normalResults = iterativeRakeTrail(
-        frontLenA,
-        rearLenA,
-        newFrontTireDiameter / 2,
-        newRearTireDiameter / 2,
+    // Scenario A: Baseline fully extended
+    const frontLenA = Math.max(0, uFShock - forkSlide);
+    const rearLenA  = uRShock;
+    const baseline = iterativeRakeTrail(
+        frontLenA, rearLenA,
+        newFrontDiam / 2,
+        newRearDiam / 2,
         totalUpdatedOffset,
-        initialHeadAngle,
+        headAngle,
         wheelbase,
         initHeightDiff,
-        linkageRatio
+        linkage
     );
 
-    // Save these to global so "saveResults()" can store them
-    window.currentAngle = normalResults.angleDeg;
-    window.currentTrail = normalResults.trail;
-
-    // ------------------------------------------------------------------
-    // SCENARIO B: 33% sag both ends
-    // If you compress the rear wheel by 0.33 * rearTravel (vertical),
-    // the shock length changes by (0.33 * rearTravel) / linkageRatio.
-    const compressedRearShockB = updatedRearShock - (0.33 * rearTravel) / linkageRatio;
-
-    // Similarly, if the front compresses 0.33 * frontTravel along the fork,
-    // new fork length = updatedFrontShock - (0.33 * frontTravel).
-    const compressedFrontShockB = updatedFrontShock - (0.33 * frontTravel);
-
-    // Then subtract forkSlide from that final length:
+    // Scenario B: 33% sag both ends
+    const compressedRearShockB = uRShock - (0.33 * rTravel) / linkage;
+    const compressedFrontShockB = uFShock - (0.33 * fTravel);
     const frontLenB = Math.max(0, compressedFrontShockB - forkSlide);
     const rearLenB  = Math.max(0, compressedRearShockB);
-
-    const sagResults = iterativeRakeTrail(
-        frontLenB,
-        rearLenB,
-        newFrontTireDiameter / 2,
-        newRearTireDiameter / 2,
+    const sag = iterativeRakeTrail(
+        frontLenB, rearLenB,
+        newFrontDiam / 2,
+        newRearDiam / 2,
         totalUpdatedOffset,
-        initialHeadAngle,
+        headAngle,
         wheelbase,
         initHeightDiff,
-        linkageRatio
+        linkage
     );
 
-    // ------------------------------------------------------------------
-    // SCENARIO C: Full compression both ends
-    // Full compression of the rear is "rearTravel" vertical, so shock shortens by (rearTravel / linkageRatio).
-    const compressedRearShockC = updatedRearShock - (rearTravel / linkageRatio);
-    // Full compression of the front is "frontTravel" along the fork
-    const compressedFrontShockC = updatedFrontShock - frontTravel;
-
-    const frontLenC = Math.max(0, compressedFrontShockC - forkSlide);
-    const rearLenC  = Math.max(0, compressedRearShockC);
-
-    const fullCompResults = iterativeRakeTrail(
-        frontLenC,
-        rearLenC,
-        newFrontTireDiameter / 2,
-        newRearTireDiameter / 2,
+    // Scenario C: Full compression both ends
+    const compRearShockC = uRShock - (rTravel / linkage);
+    const compFrontShockC = uFShock - fTravel;
+    const frontLenC = Math.max(0, compFrontShockC - forkSlide);
+    const rearLenC  = Math.max(0, compRearShockC);
+    const fullComp = iterativeRakeTrail(
+        frontLenC, rearLenC,
+        newFrontDiam / 2,
+        newRearDiam / 2,
         totalUpdatedOffset,
-        initialHeadAngle,
+        headAngle,
         wheelbase,
         initHeightDiff,
-        linkageRatio
+        linkage
     );
 
-    // ------------------------------------------------------------------
-    // SCENARIO D: Fork fully compressed, rear extended
-    // Fork loses frontTravel, shock is still fully extended
-    const frontLenD = Math.max(0, (updatedFrontShock - frontTravel) - forkSlide);
-    const rearLenD  = updatedRearShock;
-
-    const frontCompRearExtended = iterativeRakeTrail(
-        frontLenD,
-        rearLenD,
-        newFrontTireDiameter / 2,
-        newRearTireDiameter / 2,
+    // Scenario D: Fork fully compressed, rear extended
+    const frontLenD = Math.max(0, (uFShock - fTravel) - forkSlide);
+    const rearLenD  = uRShock;
+    const forkCompRearExt = iterativeRakeTrail(
+        frontLenD, rearLenD,
+        newFrontDiam / 2,
+        newRearDiam / 2,
         totalUpdatedOffset,
-        initialHeadAngle,
+        headAngle,
         wheelbase,
         initHeightDiff,
-        linkageRatio
+        linkage
     );
 
-    // ------------------------------------------------------------------
-    // SCENARIO E: Shock fully compressed, fork extended
-    // Rear compresses the full vertical travel => shock shortens by (rearTravel / ratio)
-    const compressedRearShockE = updatedRearShock - (rearTravel / linkageRatio);
-    // Fork is fully extended => just subtract slide
-    const frontLenE = Math.max(0, updatedFrontShock - forkSlide);
-
-    const rearCompFrontExtended = iterativeRakeTrail(
-        frontLenE,
-        Math.max(0, compressedRearShockE),
-        newFrontTireDiameter / 2,
-        newRearTireDiameter / 2,
+    // Scenario E: Shock fully compressed, fork extended
+    const compRearShockE = uRShock - (rTravel / linkage);
+    const frontLenE = Math.max(0, uFShock - forkSlide);
+    const shockCompForkExt = iterativeRakeTrail(
+        frontLenE, compRearShockE,
+        newFrontDiam / 2,
+        newRearDiam / 2,
         totalUpdatedOffset,
-        initialHeadAngle,
+        headAngle,
         wheelbase,
         initHeightDiff,
-        linkageRatio
+        linkage
     );
 
-    // ------------------------------------------------------------------
-    // DISPLAY
-    const resultsDiv = document.getElementById('results');
-    resultsDiv.innerHTML = `
+    // Return an object containing all 5
+    return {
+        baseline: {
+            rake: baseline.angleDeg,
+            trail: baseline.trail
+        },
+        sag: {
+            rake: sag.angleDeg,
+            trail: sag.trail
+        },
+        fullComp: {
+            rake: fullComp.angleDeg,
+            trail: fullComp.trail
+        },
+        forkCompRearExt: {
+            rake: forkCompRearExt.angleDeg,
+            trail: forkCompRearExt.trail
+        },
+        shockCompForkExt: {
+            rake: shockCompForkExt.angleDeg,
+            trail: shockCompForkExt.trail
+        }
+    };
+}
+
+/**
+ * Main geometry calculation for *current* inputs from the DOM.
+ * Populates the "results" div with 5 scenario results.
+ */
+function calculateGeometry() {
+    // 1) Gather the input data from DOM:
+    const data = {
+        initialFrontWheel: document.getElementById('initial-front-wheel').value,
+        initialFrontTireWidth: document.getElementById('initial-front-tire-width').value,
+        initialFrontAspect: document.getElementById('initial-front-aspect-ratio').value,
+
+        initialRearWheel: document.getElementById('initial-rear-wheel').value,
+        initialRearTireWidth: document.getElementById('initial-rear-tire-width').value,
+        initialRearAspect: document.getElementById('initial-rear-aspect-ratio').value,
+
+        newFrontWheel: document.getElementById('new-front-wheel').value,
+        newFrontTireWidth: document.getElementById('new-front-tire-width').value,
+        newFrontAspect: document.getElementById('new-front-aspect-ratio').value,
+        newRearWheel: document.getElementById('new-rear-wheel').value,
+        newRearTireWidth: document.getElementById('new-rear-tire-width').value,
+        newRearAspect: document.getElementById('new-rear-aspect-ratio').value,
+
+        headAngle: document.getElementById('head-angle').value,
+        wheelbase: document.getElementById('wheelbase').value,
+
+        initialFrontShock: document.getElementById('initial-front-shock').value,
+        updatedFrontShock: document.getElementById('updated-front-shock').value,
+        forkSlide: document.getElementById('fork-slide').value,
+
+        initialRearShock: document.getElementById('initial-rear-shock').value,
+        updatedRearShock: document.getElementById('updated-rear-shock').value,
+        linkageRatio: document.getElementById('linkage-ratio').value,
+
+        rearTravel: document.getElementById('rear-travel').value,
+        frontTravel: document.getElementById('front-travel').value,
+
+        initialForkOffset: document.getElementById('initial-fork-offset').value,
+        initialForkAxleOffset: document.getElementById('initial-fork-axle-offset').value,
+        updatedForkOffset: document.getElementById('updated-fork-offset').value,
+        updatedForkAxleOffset: document.getElementById('updated-fork-axle-offset').value
+    };
+
+    // 2) Compute all scenarios
+    const scenarios = calculateScenariosFromData(data);
+
+    // 3) Display them in the "results" div
+    const r = document.getElementById('results');
+    r.innerHTML = `
         <h3>A) Baseline (Fully Extended)</h3>
-        <p>Rake: ${normalResults.angleDeg.toFixed(2)}°<br>
-        Trail: ${normalResults.trail.toFixed(1)} mm</p>
+        <p>Rake: ${scenarios.baseline.rake.toFixed(2)}°<br>
+        Trail: ${scenarios.baseline.trail.toFixed(1)} mm</p>
 
         <h3>B) Rider Sag (33% each end)</h3>
-        <p>Rake: ${sagResults.angleDeg.toFixed(2)}°<br>
-        Trail: ${sagResults.trail.toFixed(1)} mm</p>
+        <p>Rake: ${scenarios.sag.rake.toFixed(2)}°<br>
+        Trail: ${scenarios.sag.trail.toFixed(1)} mm</p>
 
         <h3>C) Full Compression (Both Ends)</h3>
-        <p>Rake: ${fullCompResults.angleDeg.toFixed(2)}°<br>
-        Trail: ${fullCompResults.trail.toFixed(1)} mm</p>
+        <p>Rake: ${scenarios.fullComp.rake.toFixed(2)}°<br>
+        Trail: ${scenarios.fullComp.trail.toFixed(1)} mm</p>
 
         <h3>D) Fork Fully Compressed, Rear Extended</h3>
-        <p>Rake: ${frontCompRearExtended.angleDeg.toFixed(2)}°<br>
-        Trail: ${frontCompRearExtended.trail.toFixed(1)} mm</p>
+        <p>Rake: ${scenarios.forkCompRearExt.rake.toFixed(2)}°<br>
+        Trail: ${scenarios.forkCompRearExt.trail.toFixed(1)} mm</p>
 
         <h3>E) Shock Fully Compressed, Fork Extended</h3>
-        <p>Rake: ${rearCompFrontExtended.angleDeg.toFixed(2)}°<br>
-        Trail: ${rearCompFrontExtended.trail.toFixed(1)} mm</p>
+        <p>Rake: ${scenarios.shockCompForkExt.rake.toFixed(2)}°<br>
+        Trail: ${scenarios.shockCompForkExt.trail.toFixed(1)} mm</p>
     `;
 }
 </script>
