@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Motorcycle Geometry Calculator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: auto;
+        }
+
+        input {
+            margin-bottom: 10px;
+            padding: 5px;
+            width: 100%;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        button {
+            padding: 6px 12px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin-bottom: 10px;
+            margin-right: 10px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        .results {
+            margin-top: 20px;
+            font-weight: bold;
+        }
+
+        .side-panel {
+            margin-top: 40px;
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+
+        .side-panel h2 {
+            margin-top: 0;
+        }
+
+        .delete-btn {
+            margin-left: 15px;
+            background-color: #dc3545;
+        }
+
+        .delete-btn:hover {
+            background-color: #c82333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Motorcycle Geometry Calculator</h1>
+
+        <!-- FRONT WHEEL/TIRE -->
+        <label for="initial-front-wheel">Initial Front Wheel Diameter (inches):</label>
+        <input type="number" id="initial-front-wheel" step="1" value="21">
+
+        <label for="initial-front-tire-width">Initial Front Tire Width (mm):</label>
+        <input type="number" id="initial-front-tire-width" step="1" value="90">
+
+        <label for="initial-front-aspect-ratio">Initial Front Tire Aspect Ratio (%):</label>
+        <input type="number" id="initial-front-aspect-ratio" step="1" value="90">
+
+        <!-- REAR WHEEL/TIRE -->
+        <label for="initial-rear-wheel">Initial Rear Wheel Diameter (inches):</label>
+        <input type="number" id="initial-rear-wheel" step="1" value="18">
+
+        <label for="initial-rear-tire-width">Initial Rear Tire Width (mm):</label>
+        <input type="number" id="initial-rear-tire-width" step="1" value="120">
+
+        <label for="initial-rear-aspect-ratio">Initial Rear Tire Aspect Ratio (%):</label>
+        <input type="number" id="initial-rear-aspect-ratio" step="1" value="90">
+
+        <!-- NEW FRONT/REAR WHEEL/TIRE -->
+        <label for="new-front-wheel">New Front Wheel Diameter (inches):</label>
+        <input type="number" id="new-front-wheel" step="1" value="21">
+
+        <label for="new-front-tire-width">New Front Tire Width (mm):</label>
+        <input type="number" id="new-front-tire-width" step="1" value="90">
+
+        <label for="new-front-aspect-ratio">New Front Tire Aspect Ratio (%):</label>
+        <input type="number" id="new-front-aspect-ratio" step="1" value="90">
+
+        <label for="new-rear-wheel">New Rear Wheel Diameter (inches):</label>
+        <input type="number" id="new-rear-wheel" step="1" value="18">
+
+        <label for="new-rear-tire-width">New Rear Tire Width (mm):</label>
+        <input type="number" id="new-rear-tire-width" step="1" value="120">
+
+        <label for="new-rear-aspect-ratio">New Rear Tire Aspect Ratio (%):</label>
+        <input type="number" id="new-rear-aspect-ratio" step="1" value="90">
+
+        <!-- RAKE, WHEELBASE -->
+        <label for="head-angle">Initial Rake from Vertical (degrees):</label>
+        <input type="number" id="head-angle" step="0.1" value="27">
+
+        <label for="wheelbase">Wheelbase (mm):</label>
+        <input type="number" id="wheelbase" step="1" value="1504">
+
+        <!-- SUSPENSION -->
+        <label for="initial-front-shock">Initial Front Fork Length (mm):</label>
+        <input type="number" id="initial-front-shock" step="1" value="915">
+
+        <label for="updated-front-shock">Updated Front Fork Length (mm):</label>
+        <input type="number" id="updated-front-shock" step="1" value="915">
+
+        <!-- New field for sliding forks up in clamps -->
+        <label for="fork-slide">Fork Tube “Slide” in Clamps (mm) [subtract from fork length]:</label>
+        <input type="number" id="fork-slide" step="1" value="0">
+
+        <label for="initial-rear-shock">Initial Rear Shock Length (mm):</label>
+        <input type="number" id="initial-rear-shock" step="1" value="401">
+
+        <label for="updated-rear-shock">Updated Rear Shock Length (mm):</label>
+        <input type="number" id="updated-rear-shock" step="1" value="401">
+
+        <label for="linkage-ratio">Rear Linkage Ratio:</label>
+        <input type="number" id="linkage-ratio" step="0.01" value="3.0">
+
+        <!-- OFFSETS (PERPENDICULAR) -->
+        <label for="initial-fork-offset">Initial Fork Offset (mm) [perpendicular]:</label>
+        <input type="number" id="initial-fork-offset" step="0.1" value="22">
+
+        <label for="initial-fork-axle-offset">Initial Fork Axle Offset (mm) [perpendicular]:</label>
+        <input type="number" id="initial-fork-axle-offset" step="0.1" value="35">
+
+        <label for="updated-fork-offset">Updated Fork Offset (mm) [perpendicular]:</label>
+        <input type="number" id="updated-fork-offset" step="0.1" value="22">
+
+        <label for="updated-fork-axle-offset">Updated Fork Axle Offset (mm) [perpendicular]:</label>
+        <input type="number" id="updated-fork-axle-offset" step="0.1" value="35">
+
+        <!-- BUTTONS -->
+        <button onclick="calculateGeometry()">Calculate Geometry</button>
+
+        <!-- Setup Name / Save -->
+        <label for="setup-name">Setup Name:</label>
+        <input type="text" id="setup-name" placeholder="e.g. 'High offset wheels'">
+        <button onclick="saveResults()">Save Results</button>
+
+        <!-- RESULTS -->
+        <div class="results" id="results">
+            Results will appear here.
+        </div>
+
+        <!-- SIDE PANEL for saved results -->
+        <div class="side-panel">
+            <h2>Saved Rake/Trail</h2>
+            <ul id="saved-list"></ul>
+        </div>
+    </div>
+
+    <script>
+        // We'll store the current results in these globals so "saveResults" can access them
+        window.currentAngle = 0;
+        window.currentTrail = 0;
+
+        // We'll keep an array in memory to represent the saved setups. We'll also load/save from localStorage.
+        let savedSetups = [];
+
+        // On load, read localStorage
+        window.addEventListener('load', () => {
+            const data = localStorage.getItem('savedSetups');
+            if (data) {
+                try {
+                    savedSetups = JSON.parse(data);
+                    renderSavedSetups();
+                } catch (err) {
+                    console.warn("Failed to parse savedSetups from localStorage:", err);
+                }
+            }
+        });
+
+        function renderSavedSetups() {
+            const list = document.getElementById('saved-list');
+            list.innerHTML = '';
+
+            savedSetups.forEach((item, index) => {
+                const li = document.createElement('li');
+                li.textContent = `${item.name} - Rake: ${item.angle.toFixed(1)}°, Trail: ${item.trail.toFixed(1)} mm`;
+
+                // Add a delete button
+                const delBtn = document.createElement('button');
+                delBtn.textContent = 'Delete';
+                delBtn.classList.add('delete-btn');
+                delBtn.onclick = () => {
+                    // Remove this item from array
+                    savedSetups.splice(index, 1);
+                    // Save back to localStorage
+                    localStorage.setItem('savedSetups', JSON.stringify(savedSetups));
+                    // Re-render
+                    renderSavedSetups();
+                };
+
+                li.appendChild(delBtn);
+                list.appendChild(li);
+            });
+        }
+
+        function calculateTireDiameter(wheelDiameter, tireWidth, aspectRatio) {
+            // wheelDiameter is in mm (converted from inches by * 25.4)
+            // plus twice the sidewall (tireWidth * aspectRatio%)
+            return wheelDiameter + 2 * (tireWidth * (aspectRatio / 100));
+        }
+
+        function calculateGeometry() {
+            // 1. Grab inputs
+            const initialFrontWheel     = parseFloat(document.getElementById('initial-front-wheel').value) * 25.4;
+            const initialFrontTireWidth = parseFloat(document.getElementById('initial-front-tire-width').value);
+            const initialFrontAspect    = parseFloat(document.getElementById('initial-front-aspect-ratio').value);
+
+            const initialRearWheel     = parseFloat(document.getElementById('initial-rear-wheel').value) * 25.4;
+            const initialRearTireWidth = parseFloat(document.getElementById('initial-rear-tire-width').value);
+            const initialRearAspect    = parseFloat(document.getElementById('initial-rear-aspect-ratio').value);
+
+            const newFrontWheel     = parseFloat(document.getElementById('new-front-wheel').value) * 25.4;
+            const newFrontTireWidth = parseFloat(document.getElementById('new-front-tire-width').value);
+            const newFrontAspect    = parseFloat(document.getElementById('new-front-aspect-ratio').value);
+
+            const newRearWheel     = parseFloat(document.getElementById('new-rear-wheel').value) * 25.4;
+            const newRearTireWidth = parseFloat(document.getElementById('new-rear-tire-width').value);
+            const newRearAspect    = parseFloat(document.getElementById('new-rear-aspect-ratio').value);
+
+            const initialHeadAngle = parseFloat(document.getElementById('head-angle').value);  // from vertical (degrees)
+            const wheelbase        = parseFloat(document.getElementById('wheelbase').value);
+
+            const initialFrontShock = parseFloat(document.getElementById('initial-front-shock').value);
+            const updatedFrontShock = parseFloat(document.getElementById('updated-front-shock').value);
+
+            // The new “slide” field
+            const forkSlide = parseFloat(document.getElementById('fork-slide').value) || 0;
+
+            // Subtract the slide from the fork lengths
+            const effectiveUpdatedFrontShock = Math.max(0, updatedFrontShock - forkSlide);
+
+            const initialRearShock  = parseFloat(document.getElementById('initial-rear-shock').value);
+            const updatedRearShock  = parseFloat(document.getElementById('updated-rear-shock').value);
+
+            const linkageRatio = parseFloat(document.getElementById('linkage-ratio').value);
+
+            // Offsets measured PERPENDICULAR to the fork axis
+            const initForkOffset   = parseFloat(document.getElementById('initial-fork-offset').value);
+            const initForkAxleOff  = parseFloat(document.getElementById('initial-fork-axle-offset').value);
+            const updForkOffset    = parseFloat(document.getElementById('updated-fork-offset').value);
+            const updForkAxleOff   = parseFloat(document.getElementById('updated-fork-axle-offset').value);
+
+            const totalInitialOffset = initForkOffset + initForkAxleOff;
+            const totalUpdatedOffset = updForkOffset + updForkAxleOff;
+
+            // 2. Tire diameters
+            const initFrontTireDiameter = calculateTireDiameter(initialFrontWheel, initialFrontTireWidth, initialFrontAspect);
+            const initRearTireDiameter  = calculateTireDiameter(initialRearWheel, initialRearTireWidth, initialRearAspect);
+            const newFrontTireDiameter  = calculateTireDiameter(newFrontWheel, newFrontTireWidth, newFrontAspect);
+            const newRearTireDiameter   = calculateTireDiameter(newRearWheel, newRearTireWidth, newRearAspect);
+
+            // 3. Convert rake to radians
+            const headAngleRad = initialHeadAngle * (Math.PI / 180);
+
+            // 4. Initial front & rear heights (perpendicular offset => subtract offset*cos(rake))
+            const initFrontRelativeHeight =
+                (initFrontTireDiameter / 2)
+                + (initialFrontShock * Math.cos(headAngleRad))
+                - (totalInitialOffset * Math.cos(headAngleRad));
+
+            const initRearRelativeHeight =
+                (initRearTireDiameter / 2)
+                + (initialRearShock * linkageRatio);
+
+            // Updated
+            const updFrontRelativeHeight =
+                (newFrontTireDiameter / 2)
+                + (effectiveUpdatedFrontShock * Math.cos(headAngleRad))
+                - (totalUpdatedOffset * Math.cos(headAngleRad));
+
+            const updRearRelativeHeight =
+                (newRearTireDiameter / 2)
+                + (updatedRearShock * linkageRatio);
+
+            // 5. Height differences
+            const initHeightDiff = initFrontRelativeHeight - initRearRelativeHeight;
+            const updHeightDiff  = updFrontRelativeHeight - updRearRelativeHeight;
+
+            // 6. Adjusted rake angle
+            // newAngle = oldAngle + [atan2(updDiff, wheelbase) - atan2(initDiff, wheelbase)]
+            const adjustedHeadAngle =
+                Math.atan2(updHeightDiff, wheelbase) * (180 / Math.PI)
+                + initialHeadAngle
+                - Math.atan2(initHeightDiff, wheelbase) * (180 / Math.PI);
+
+            // 7. Convert adjusted angle to radians
+            const angleRad = adjustedHeadAngle * (Math.PI / 180);
+
+            // 8. Trail Calculation with perpendicular offset
+            //   noOffsetTrail = R * tan(rake)
+            //   offsetHorizontal = offset * sin(rake)
+            //   trail = noOffsetTrail - offsetHorizontal
+            const newFrontRadius   = newFrontTireDiameter / 2;
+            const offsetHorizontal = totalUpdatedOffset * Math.sin(angleRad);
+            const noOffsetTrail    = newFrontRadius * Math.tan(angleRad);
+            const trail            = noOffsetTrail - offsetHorizontal;
+
+            // 9. Output the results
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = `
+                <p>Adjusted Rake Angle: ${adjustedHeadAngle.toFixed(1)}° (from vertical)</p>
+                <p>Trail: ${trail.toFixed(1)} mm</p>
+            `;
+
+            // Store the latest results in global vars for "saveResults()"
+            window.currentAngle = adjustedHeadAngle;
+            window.currentTrail = trail;
+        }
+
+        function saveResults() {
+            // 1. Get the user-supplied name for this setup
+            const setupName = document.getElementById('setup-name').value.trim();
+
+            // 2. If no name is given, we could default or skip
+            if (!setupName) {
+                alert("Please enter a name for this setup before saving.");
+                return;
+            }
+
+            // 3. Access our last calculation from global vars
+            const angle = window.currentAngle;
+            const trl   = window.currentTrail;
+
+            // 4. Build an object for storage
+            const newItem = {
+                name: setupName,
+                angle,
+                trail: trl
+            };
+
+            // 5. Push into our savedSetups array
+            savedSetups.push(newItem);
+
+            // 6. Save to localStorage
+            localStorage.setItem('savedSetups', JSON.stringify(savedSetups));
+
+            // 7. Re-render the list
+            renderSavedSetups();
+
+            // 8. Clear the setup name field
+            document.getElementById('setup-name').value = '';
+        }
+    </script>
+</body>
+</html>
