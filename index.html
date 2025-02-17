@@ -523,7 +523,7 @@ function calculateScenariosFromData(d) {
 
     const iFShock = parseFloat(d.initialFrontShock);
     const uFShock = parseFloat(d.updatedFrontShock);
-    const forkSlide = parseFloat(d.fork-slide) || parseFloat(d.forkSlide) || 0;  // fallback if typed incorrectly
+    const forkSlide = parseFloat(d["fork-slide"]) || parseFloat(d.forkSlide) || 0;  // fallback if typed incorrectly
 
     const iRShock = parseFloat(d.initialRearShock);
     const uRShock = parseFloat(d.updatedRearShock);
