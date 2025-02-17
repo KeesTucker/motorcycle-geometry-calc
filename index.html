@@ -150,6 +150,10 @@
     <label for="updated-fork-axle-offset">Updated Fork Axle Offset (mm) [perpendicular]:</label>
     <input type="number" id="updated-fork-axle-offset" step="0.1" value="35">
 
+    <!-- NEW FIELD: LOWERING LINK -->
+    <label for="lowering-link">Lowering Link (mm) [subtracts from rear ride height]:</label>
+    <input type="number" id="lowering-link" step="1" value="0">
+
     <!-- BUTTONS -->
     <button onclick="calculateGeometry()">Calculate Geometry</button>
 
@@ -196,7 +200,6 @@ function renderSavedSetups() {
     list.innerHTML = '';
 
     savedSetups.forEach((item, index) => {
-        // We'll display just the baseline scenario's rake/trail (computed on the fly if not stored)
         let baselineRake = 0;
         let baselineTrail = 0;
 
@@ -276,6 +279,9 @@ function loadSetup(index) {
     document.getElementById('updated-fork-offset').value = data.updatedForkOffset;
     document.getElementById('updated-fork-axle-offset').value = data.updatedForkAxleOffset;
 
+    // NEW: Lowering link
+    document.getElementById('lowering-link').value = data.loweringLink || 0;
+
     // Clear out the 'Setup Name' field
     document.getElementById('setup-name').value = '';
 
@@ -285,8 +291,6 @@ function loadSetup(index) {
 
 /** 
  * Saves current inputs + (optionally) the 5 scenario results to localStorage.
- * For *new* setups, we store the scenario data so we won't need to recompute later.
- * Older ones remain unaffected.
  */
 function saveResults() {
     const setupName = document.getElementById('setup-name').value.trim();
@@ -329,7 +333,10 @@ function saveResults() {
         initialForkOffset: document.getElementById('initial-fork-offset').value,
         initialForkAxleOffset: document.getElementById('initial-fork-axle-offset').value,
         updatedForkOffset: document.getElementById('updated-fork-offset').value,
-        updatedForkAxleOffset: document.getElementById('updated-fork-axle-offset').value
+        updatedForkAxleOffset: document.getElementById('updated-fork-axle-offset').value,
+
+        // NEW: Lowering link
+        loweringLink: document.getElementById('lowering-link').value
     };
 
     // Compute the 5 scenario results for this new setup
@@ -338,7 +345,7 @@ function saveResults() {
     const newItem = {
         name: setupName,
         data: data,
-        scenarios: scenarios  // storing all 5 scenarios for future use
+        scenarios: scenarios
     };
 
     savedSetups.push(newItem);
@@ -367,7 +374,6 @@ function exportCSV() {
 
     // Build each row
     savedSetups.forEach(item => {
-        // If the item didn't previously store the scenario data, compute on the fly:
         let sc = item.scenarios;
         if (!sc) {
             sc = calculateScenariosFromData(item.data);
@@ -375,20 +381,19 @@ function exportCSV() {
 
         csv += [
             `"${item.name}"`,
-            sc.baseline.rake.toFixed(2),          // Baseline rake
-            sc.baseline.trail.toFixed(1),         // Baseline trail
-            sc.sag.rake.toFixed(2),               // Sag rake
-            sc.sag.trail.toFixed(1),              // Sag trail
-            sc.fullComp.rake.toFixed(2),          // Full comp rake
-            sc.fullComp.trail.toFixed(1),         // Full comp trail
-            sc.forkCompRearExt.rake.toFixed(2),   // Fork comp, rear ext rake
-            sc.forkCompRearExt.trail.toFixed(1),  // Fork comp, rear ext trail
-            sc.shockCompForkExt.rake.toFixed(2),  // Shock comp, fork ext rake
-            sc.shockCompForkExt.trail.toFixed(1), // Shock comp, fork ext trail
+            sc.baseline.rake.toFixed(2),
+            sc.baseline.trail.toFixed(1),
+            sc.sag.rake.toFixed(2),
+            sc.sag.trail.toFixed(1),
+            sc.fullComp.rake.toFixed(2),
+            sc.fullComp.trail.toFixed(1),
+            sc.forkCompRearExt.rake.toFixed(2),
+            sc.forkCompRearExt.trail.toFixed(1),
+            sc.shockCompForkExt.rake.toFixed(2),
+            sc.shockCompForkExt.trail.toFixed(1),
         ].join(",") + "\n";
     });
 
-    // Trigger a download
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -398,10 +403,6 @@ function exportCSV() {
     link.click();
     document.body.removeChild(link);
 }
-
-//------------------------------------------------------------------
-// Below are existing geometry calculations, plus a helper function
-// to compute all 5 scenarios from a "data" object.
 
 /**
  * Helper to convert rim diameter (inches->mm) plus sidewalls into total diameter (mm).
@@ -414,6 +415,7 @@ function calculateTireDiameter(rimDiameterMm, tireWidth, aspectRatio) {
 
 /**
  * Iterative geometry function to find final rake & trail.
+ *   - We added a new parameter "loweringLink" that subtracts from the rear height.
  */
 function iterativeRakeTrail(
     frontShockLen, 
@@ -424,7 +426,8 @@ function iterativeRakeTrail(
     initHeadAngleDeg,
     wheelbase,
     initHeightDiff,
-    linkageRatio
+    linkageRatio,
+    loweringLink
 ) {
     const maxIter = 20;
     const tolerance = 0.001;
@@ -434,14 +437,17 @@ function iterativeRakeTrail(
     for (let i = 0; i < maxIter; i++) {
         const angleRad = angleDeg * (Math.PI / 180);
 
+        // Front relative height (similar to before)
         const frontRelativeHeight = 
             newFrontRadius 
             + (frontShockLen * Math.cos(angleRad)) 
             - (totalUpdatedOffset * Math.cos(angleRad));
 
+        // Rear relative height (subtract the lowering link)
         const rearRelativeHeight  = 
             newRearRadius 
-            + (rearShockLen * linkageRatio);
+            + (rearShockLen * linkageRatio)
+            - loweringLink;
 
         const newHeightDiff = frontRelativeHeight - rearRelativeHeight;
 
@@ -471,11 +477,10 @@ function iterativeRakeTrail(
 }
 
 /**
- * Given the entire input data object (same structure as in "saveResults"),
- * compute all 5 scenarios:
+ * Given the entire input data object, compute all 5 scenarios.
  */
 function calculateScenariosFromData(d) {
-    // Convert needed strings to numbers
+    // Convert strings to numbers
     const iFW  = parseFloat(d.initialFrontWheel) * 25.4;
     const iFTW = parseFloat(d.initialFrontTireWidth);
     const iFAR = parseFloat(d.initialFrontAspect);
@@ -509,6 +514,9 @@ function calculateScenariosFromData(d) {
     const uFOffset = parseFloat(d.updatedForkOffset);
     const uFAxOff  = parseFloat(d.updatedForkAxleOffset);
 
+    // NEW: Lowering link
+    const loweringLink = parseFloat(d.loweringLink) || 0;
+
     const totalInitialOffset = iFOffset + iFAxOff;
     const totalUpdatedOffset = uFOffset + uFAxOff;
 
@@ -540,7 +548,8 @@ function calculateScenariosFromData(d) {
         headAngle,
         wheelbase,
         initHeightDiff,
-        linkage
+        linkage,
+        loweringLink
     );
 
     // Scenario B: 33% sag both ends
@@ -556,7 +565,8 @@ function calculateScenariosFromData(d) {
         headAngle,
         wheelbase,
         initHeightDiff,
-        linkage
+        linkage,
+        loweringLink
     );
 
     // Scenario C: Full compression both ends
@@ -572,7 +582,8 @@ function calculateScenariosFromData(d) {
         headAngle,
         wheelbase,
         initHeightDiff,
-        linkage
+        linkage,
+        loweringLink
     );
 
     // Scenario D: Fork fully compressed, rear extended
@@ -586,7 +597,8 @@ function calculateScenariosFromData(d) {
         headAngle,
         wheelbase,
         initHeightDiff,
-        linkage
+        linkage,
+        loweringLink
     );
 
     // Scenario E: Shock fully compressed, fork extended
@@ -600,7 +612,8 @@ function calculateScenariosFromData(d) {
         headAngle,
         wheelbase,
         initHeightDiff,
-        linkage
+        linkage,
+        loweringLink
     );
 
     // Return an object containing all 5
@@ -630,7 +643,6 @@ function calculateScenariosFromData(d) {
 
 /**
  * Main geometry calculation for *current* inputs from the DOM.
- * Populates the "results" div with 5 scenario results.
  */
 function calculateGeometry() {
     // 1) Gather the input data from DOM:
@@ -667,13 +679,16 @@ function calculateGeometry() {
         initialForkOffset: document.getElementById('initial-fork-offset').value,
         initialForkAxleOffset: document.getElementById('initial-fork-axle-offset').value,
         updatedForkOffset: document.getElementById('updated-fork-offset').value,
-        updatedForkAxleOffset: document.getElementById('updated-fork-axle-offset').value
+        updatedForkAxleOffset: document.getElementById('updated-fork-axle-offset').value,
+
+        // NEW: lowering link
+        loweringLink: document.getElementById('lowering-link').value
     };
 
     // 2) Compute all scenarios
     const scenarios = calculateScenariosFromData(data);
 
-    // 3) Display them in the "results" div
+    // 3) Display them
     const r = document.getElementById('results');
     r.innerHTML = `
         <h3>A) Baseline (Fully Extended)</h3>
