@@ -411,15 +411,16 @@ function exportCSV() {
         return;
     }
 
-    // CSV header
+    // Updated CSV header including front and rear travel values
     let csv = "Setup Name,"
         + "Baseline Rake (deg),Baseline Trail (mm),Baseline Seat (mm),"
         + "Sag Rake (deg),Sag Trail (mm),Sag Seat (mm),"
         + "Full Comp Rake (deg),Full Comp Trail (mm),Full Comp Seat (mm),"
         + "Fork Full Comp Rake (deg),Fork Full Comp Trail (mm),Fork Full Comp Seat (mm),"
-        + "Shock Full Comp Rake (deg),Shock Full Comp Trail (mm),Shock Full Comp Seat (mm)\n";
+        + "Shock Full Comp Rake (deg),Shock Full Comp Trail (mm),Shock Full Comp Seat (mm),"
+        + "Front Travel (mm),Rear Travel (mm)\n";
 
-    // Build each row
+    // Build each row, appending travel front and rear values from item.data
     savedSetups.forEach(item => {
         let sc = item.scenarios;
         if (!sc) {
@@ -431,24 +432,21 @@ function exportCSV() {
             sc.baseline.rake.toFixed(2),
             sc.baseline.trail.toFixed(1),
             sc.baseline.seatHeight.toFixed(1),
-
             sc.sag.rake.toFixed(2),
             sc.sag.trail.toFixed(1),
             sc.sag.seatHeight.toFixed(1),
-
             sc.fullComp.rake.toFixed(2),
             sc.fullComp.trail.toFixed(1),
             sc.fullComp.seatHeight.toFixed(1),
-
             sc.forkCompRearExt.rake.toFixed(2),
             sc.forkCompRearExt.trail.toFixed(1),
             sc.forkCompRearExt.seatHeight.toFixed(1),
-
             sc.shockCompForkExt.rake.toFixed(2),
             sc.shockCompForkExt.trail.toFixed(1),
-            sc.shockCompForkExt.seatHeight.toFixed(1)
+            sc.shockCompForkExt.seatHeight.toFixed(1),
+            item.data.frontTravel,
+            item.data.rearTravel
         ].join(",");
-
         csv += row + "\n";
     });
 
