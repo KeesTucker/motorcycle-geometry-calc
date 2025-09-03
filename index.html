@@ -549,10 +549,10 @@ function calculateScenariosFromData(d) {
 
     // initial front/rear relative height
     const angleRad = headAngle * (Math.PI / 180);
-    const initFrontRelHeight = 
+    const initFrontRelHeight =
         (initFrontDiam / 2)
       + (iFShock * Math.cos(angleRad))
-      - (totalInitialOffset * Math.cos(angleRad));
+      - (totalInitialOffset * Math.sin(angleRad));
     const initRearRelHeight =
         (initRearDiam / 2)
       + (iRShock * linkage);
@@ -643,10 +643,10 @@ function iterativeRakeTrail(
     for (let i = 0; i < maxIter; i++) {
         const angleRad = angleDeg * (Math.PI / 180);
 
-        const frontRelativeHeight = 
-            newFrontRadius 
-            + (frontShockLen * Math.cos(angleRad)) 
-            - (totalUpdatedOffset * Math.cos(angleRad));
+        const frontRelativeHeight =
+            newFrontRadius
+            + (frontShockLen * Math.cos(angleRad))
+            - (totalUpdatedOffset * Math.sin(angleRad));
 
         const rearRelativeHeight  = 
             newRearRadius 
@@ -673,7 +673,7 @@ function iterativeRakeTrail(
     const finalFrontRelHeight =
         newFrontRadius +
         (frontShockLen * Math.cos(finalAngleRad)) -
-        (totalUpdatedOffset * Math.cos(finalAngleRad));
+        (totalUpdatedOffset * Math.sin(finalAngleRad));
 
     const finalRearRelHeight =
         newRearRadius +
@@ -681,7 +681,7 @@ function iterativeRakeTrail(
         loweringLink;
 
     // compute final trail
-    const offsetHorizontal = totalUpdatedOffset * Math.sin(finalAngleRad);
+    const offsetHorizontal = totalUpdatedOffset * Math.cos(finalAngleRad);
     const noOffsetTrail = newFrontRadius * Math.tan(finalAngleRad);
     const trail = noOffsetTrail - offsetHorizontal;
 
